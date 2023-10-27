@@ -1,4 +1,5 @@
 use clap::ArgMatches;
+use serde_json::Value;
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -15,6 +16,7 @@ pub struct ArgHandler<'a> {
 }
 
 impl<'a> ArgHandler<'a> {
+    #[allow(dead_code)]
     pub fn new(args: &'a ArgMatches, next: Option<Box<dyn Handler>>) -> Self {
         ArgHandler { args, next }
     }
@@ -37,6 +39,7 @@ pub struct EnvHandler {
 }
 
 impl EnvHandler {
+    #[allow(dead_code)]
     pub fn new(next: Option<Box<dyn Handler>>) -> Self {
         EnvHandler { next }
     }
@@ -61,6 +64,7 @@ pub struct FileHandler {
 }
 
 impl FileHandler {
+    #[allow(dead_code)]
     pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
         FileHandler { file_path: Path::new(file_path).into(), next }
     }
@@ -81,11 +85,71 @@ impl Handler for FileHandler {
     }
 }
 
+
+pub struct JSONFileHandler {
+    file_handler: FileHandler,
+}
+
+impl JSONFileHandler {
+    #[allow(dead_code)]
+    pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
+        JSONFileHandler { file_handler: FileHandler::new(file_path, next) }
+    }
+
+    fn find_key_recursive(json_value: &Value, key: &str) -> Option<String> {
+        match json_value {
+            Value::Object(map) => {
+                if let Some(value) = map.get(key) {
+                    match value {
+                        serde_json::Value::String(value) => return Some(value.as_str().to_string()),
+                        _ => return Some(value.to_string())
+                        // serde_json::Value::Number(value) => return Some(value.to_string()),
+                        // _ => {}
+                    }
+                }
+                for (_, value) in map.iter() {
+                    if let Some(found) = Self::find_key_recursive(value, key) {
+                        return Some(found);
+                    }
+                }
+            }
+            Value::Array(arr) => {
+                for value in arr.iter() {
+                    if let Some(found) = Self::find_key_recursive(value, key) {
+                        return Some(found);
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+}
+
+impl Handler for JSONFileHandler {
+    fn handle_request(&self, key: &str) -> Option<String> {
+        if let Some(file_data) = self.file_handler.handle_request(key) {
+            if let Ok(parsed_json) = serde_json::from_str::<Value>(&file_data) {
+                if let Some(value) = Self::find_key_recursive(&parsed_json, key) {
+                    return Some(value);
+                }
+            } else {
+                if let Some(next_handler) = &self.file_handler.next {
+                    return next_handler.handle_request(key);
+                }
+            }
+        }
+        None
+    }
+}
+
+
 pub struct DefaultHandler {
     value: String,
 }
 
 impl DefaultHandler {
+    #[allow(dead_code)]
     pub fn new(value: &str) -> Self {
         DefaultHandler { value: String::from(value) }
     }
@@ -207,6 +271,68 @@ mod tests {
         fn test_next_handler_called() {
             let next_handler: Option<Box<dyn Handler>> = Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
             let handler = FileHandler::new("", next_handler);
+            let actual = handler.handle_request("example");
+            assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
+        }
+    }
+
+    mod json_file_handler {
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        use super::*;
+
+        #[test]
+        fn test_retrieves_set_value_number() {
+            let mut temp_file = NamedTempFile::new().unwrap();
+            writeln!(temp_file, r#"{{"test_key": 123}}"#).unwrap();
+
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let actual = handler.handle_request("test_key"); // key is not used in this handler
+            assert_eq!(actual, Some("123".to_string()));
+        }
+
+        #[test]
+        fn test_retrieves_set_value_string() {
+            let mut temp_file = NamedTempFile::new().unwrap();
+            writeln!(temp_file, r#"{{"test_key": "example"}}"#).unwrap();
+
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let actual = handler.handle_request("test_key"); // key is not used in this handler
+            assert_eq!(actual, Some("example".to_string()));
+        }
+
+        #[test]
+        fn test_retrieves_set_value_nested_object() {
+            let mut temp_file = NamedTempFile::new().unwrap();
+            writeln!(temp_file, r#"{{"test_obj": {{"test_key": "example"}} }}"#).unwrap();
+
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let actual = handler.handle_request("test_key"); // key is not used in this handler
+            assert_eq!(actual, Some("example".to_string()));
+        }
+
+        #[test]
+        fn test_retrieves_set_value_in_array() {
+            let mut temp_file = NamedTempFile::new().unwrap();
+            writeln!(temp_file, r#"[{{"test_key": "example"}}]"#).unwrap();
+
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let actual = handler.handle_request("test_key"); // key is not used in this handler
+            assert_eq!(actual, Some("example".to_string()));
+        }
+
+        #[test]
+        fn test_returns_none_for_nonexistent_file() {
+            let handler = JSONFileHandler::new("", None);
+            let result = handler.handle_request("example");
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_next_handler_called() {
+            let next_handler: Option<Box<dyn Handler>> = Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
+            let handler = JSONFileHandler::new("", next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }
