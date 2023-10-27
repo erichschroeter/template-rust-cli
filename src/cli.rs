@@ -25,7 +25,7 @@ impl<'a> ArgHandler<'a> {
 impl<'a> Handler for ArgHandler<'a> {
     fn handle_request(&self, key: &str) -> Option<String> {
         if let Some(value) = self.args.get_one::<String>(key).map(String::from) {
-            return Some(value)
+            return Some(value);
         }
         if let Some(next_handler) = &self.next {
             return next_handler.handle_request(key);
@@ -57,7 +57,6 @@ impl Handler for EnvHandler {
     }
 }
 
-
 pub struct FileHandler {
     file_path: PathBuf,
     next: Option<Box<dyn Handler>>,
@@ -66,7 +65,10 @@ pub struct FileHandler {
 impl FileHandler {
     #[allow(dead_code)]
     pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
-        FileHandler { file_path: Path::new(file_path).into(), next }
+        FileHandler {
+            file_path: Path::new(file_path).into(),
+            next,
+        }
     }
 }
 
@@ -85,7 +87,6 @@ impl Handler for FileHandler {
     }
 }
 
-
 pub struct JSONFileHandler {
     file_handler: FileHandler,
 }
@@ -93,7 +94,9 @@ pub struct JSONFileHandler {
 impl JSONFileHandler {
     #[allow(dead_code)]
     pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
-        JSONFileHandler { file_handler: FileHandler::new(file_path, next) }
+        JSONFileHandler {
+            file_handler: FileHandler::new(file_path, next),
+        }
     }
 
     fn find_key_recursive(json_value: &Value, key: &str) -> Option<String> {
@@ -101,10 +104,10 @@ impl JSONFileHandler {
             Value::Object(map) => {
                 if let Some(value) = map.get(key) {
                     match value {
-                        serde_json::Value::String(value) => return Some(value.as_str().to_string()),
-                        _ => return Some(value.to_string())
-                        // serde_json::Value::Number(value) => return Some(value.to_string()),
-                        // _ => {}
+                        serde_json::Value::String(value) => {
+                            return Some(value.as_str().to_string())
+                        }
+                        _ => return Some(value.to_string()),
                     }
                 }
                 for (_, value) in map.iter() {
@@ -143,7 +146,6 @@ impl Handler for JSONFileHandler {
     }
 }
 
-
 pub struct DefaultHandler {
     value: String,
 }
@@ -151,7 +153,9 @@ pub struct DefaultHandler {
 impl DefaultHandler {
     #[allow(dead_code)]
     pub fn new(value: &str) -> Self {
-        DefaultHandler { value: String::from(value) }
+        DefaultHandler {
+            value: String::from(value),
+        }
     }
 }
 
@@ -198,7 +202,8 @@ mod tests {
         #[test]
         fn test_next_handler_called() {
             env::remove_var("UNSET_KEY"); // Ensure the variable is not set
-            let next_handler: Option<Box<dyn Handler>> = Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
+            let next_handler: Option<Box<dyn Handler>> =
+                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
             let handler = EnvHandler::new(next_handler);
             let actual = handler.handle_request("UNSET_KEY");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
@@ -237,7 +242,8 @@ mod tests {
             let args = clap::Command::new("test_app")
                 .arg(Arg::new("example").long("example"))
                 .get_matches_from(vec!["test_app"]);
-            let next_handler: Option<Box<dyn Handler>> = Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
+            let next_handler: Option<Box<dyn Handler>> =
+                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
             let handler = ArgHandler::new(&args, next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
@@ -245,8 +251,8 @@ mod tests {
     }
 
     mod file_handler {
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         use super::*;
 
@@ -269,7 +275,8 @@ mod tests {
 
         #[test]
         fn test_next_handler_called() {
-            let next_handler: Option<Box<dyn Handler>> = Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
+            let next_handler: Option<Box<dyn Handler>> =
+                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
             let handler = FileHandler::new("", next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
@@ -277,8 +284,8 @@ mod tests {
     }
 
     mod json_file_handler {
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         use super::*;
 
@@ -331,11 +338,11 @@ mod tests {
 
         #[test]
         fn test_next_handler_called() {
-            let next_handler: Option<Box<dyn Handler>> = Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
+            let next_handler: Option<Box<dyn Handler>> =
+                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
             let handler = JSONFileHandler::new("", next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }
     }
 }
-

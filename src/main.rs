@@ -6,7 +6,6 @@ use log::{debug, error, info, trace, warn, LevelFilter};
 // use crate::cli::{HandlerBox, DefaultHandler, ConfigFileHandler, EnvHandler, ArgHandler};
 // use clap::{App, Arg, ArgMatches, SubCommand};
 
-
 /// Sets up logging based on the specified verbosity level.
 ///
 /// This function initializes the logging framework using `env_logger` crate.
@@ -53,7 +52,6 @@ fn setup_logging(verbose: &str) {
     debug!("log level enabled: debug");
     trace!("log level enabled: trace");
 }
-
 
 fn main() {
     let matches = clap::Command::new("FIXME")
@@ -130,4 +128,3 @@ fn fixme2(matches: &ArgMatches) {
     // println!("Running fixme2 with input: {}", input);
     println!("Running fixme2: {:?}", matches);
 }
-
