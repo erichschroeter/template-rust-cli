@@ -3,7 +3,7 @@ mod cli;
 use clap::{Arg, ArgMatches};
 use log::{debug, error, info, trace, warn, LevelFilter};
 
-// use crate::cli::{HandlerBox, DefaultHandler, ConfigFileHandler, EnvHandler, ArgHandler};
+use crate::cli::{ArgHandler, DefaultHandler, EnvHandler, FileHandler, Handler};
 // use clap::{App, Arg, ArgMatches, SubCommand};
 
 /// Sets up logging based on the specified verbosity level.
@@ -108,19 +108,20 @@ fn fixme1(matches: &ArgMatches) {
     println!("Running fixme1: {:?}", matches);
     // let mut handler = HandlerBox::new();
 
-    // let default_handler = Box::new(DefaultHandler);
-    // let config_file_handler = Box::new(ConfigFileHandler);
-    // let env_handler = Box::new(EnvHandler);
-    // let clap_handler = Box::new(ArgHandler);
+    let verbosity_handler = ArgHandler::new(
+        matches,
+        EnvHandler::as_box(FileHandler::as_box(
+            "~/.config/fixme/verbosity",
+            DefaultHandler::as_box("info"),
+        )),
+    );
+    // let env_handler = Box::new(EnvHandler::new(None));
+    // let file_handler = Box::new(FileHandler::new("~/.config/fixme/verbosity", None));
+    // let default_handler = Box::new(DefaultHandler::new("info"));
 
-    // handler.set_next(clap_handler);
-    // handler.next.as_mut().unwrap().set_next(env_handler);
-    // handler.next.as_mut().unwrap().next.as_mut().unwrap().set_next(config_file_handler);
-    // handler.next.as_mut().unwrap().next.as_mut().unwrap().next.as_mut().unwrap().set_next(default_handler);
-
-    // if let Some(verbosity) = handler.handle_request(matches) {
-    //     println!("Verbosity: {}", verbosity);
-    // }
+    if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
+        println!("Verbosity: {}", verbosity);
+    }
 }
 
 fn fixme2(matches: &ArgMatches) {

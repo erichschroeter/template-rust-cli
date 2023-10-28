@@ -6,23 +6,64 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
+/// A trait for handling requests based on a key.
+///
+/// This trait provides a mechanism for handling requests by taking a key and
+/// returning an associated value wrapped in an `Option`.
 pub trait Handler {
+    /// Handles a request based on the provided key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key associated with the request.
+    ///
+    /// # Returns
+    ///
+    /// An `Option` wrapping a `String` value associated with the key.
+    /// If there's no value associated with the key, it should return `None`.
     fn handle_request(&self, key: &str) -> Option<String>;
 }
 
+/// A handler for managing command-line arguments.
+///
+/// This struct is responsible for handling command-line arguments passed to the application.
+/// If a value for a given key is not found in the arguments, it delegates the request to the
+/// next handler (if provided).
 pub struct ArgHandler<'a> {
+    /// Parsed command-line arguments.
     args: &'a ArgMatches,
+    /// An optional next handler to delegate requests if this handler can't fulfill them.
     next: Option<Box<dyn Handler>>,
 }
 
 impl<'a> ArgHandler<'a> {
+    /// Creates a new `ArgHandler` with the specified arguments and an optional next handler.
+    ///
+    /// # Arguments
+    ///
+    /// * `args` - The parsed command-line arguments.
+    /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
     pub fn new(args: &'a ArgMatches, next: Option<Box<dyn Handler>>) -> Self {
         ArgHandler { args, next }
     }
+
+    #[allow(dead_code)]
+    pub fn as_box(args: &'a ArgMatches, next: Option<Box<dyn Handler>>) -> Option<Box<Self>> {
+        Some(Box::new(ArgHandler::new(args, next)))
+    }
 }
 
 impl<'a> Handler for ArgHandler<'a> {
+    /// Retrieves a value for the specified key from the command-line arguments.
+    ///
+    /// If the key is not found in the arguments, and if a next handler is provided, it delegates the request
+    /// to the next handler. If there's no next handler or if the key is not found in both the arguments and
+    /// the next handler, it returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key for which the value needs to be retrieved.
     fn handle_request(&self, key: &str) -> Option<String> {
         if let Some(value) = self.args.get_one::<String>(key).map(String::from) {
             return Some(value);
@@ -34,18 +75,43 @@ impl<'a> Handler for ArgHandler<'a> {
     }
 }
 
+/// A handler for retrieving values from environment variables.
+///
+/// This struct is responsible for handling requests by checking for the existence of
+/// an environment variable corresponding to the provided key. If the environment variable
+/// is not found, it delegates the request to the next handler (if provided).
 pub struct EnvHandler {
+    /// An optional next handler to delegate requests if this handler can't fulfill them.
     next: Option<Box<dyn Handler>>,
 }
 
 impl EnvHandler {
+    /// Creates a new `EnvHandler` with an optional next handler.
+    ///
+    /// # Arguments
+    ///
+    /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
     pub fn new(next: Option<Box<dyn Handler>>) -> Self {
         EnvHandler { next }
     }
+
+    #[allow(dead_code)]
+    pub fn as_box(next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
+        Some(Box::new(EnvHandler::new(next)))
+    }
 }
 
 impl Handler for EnvHandler {
+    /// Retrieves a value for the specified key from the environment variables.
+    ///
+    /// If the environment variable corresponding to the key is not found, and if a next handler is provided,
+    /// it delegates the request to the next handler. If there's no next handler or if the key is not found
+    /// both in the environment and the next handler, it returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key for which the value needs to be retrieved from environment variables.
     fn handle_request(&self, key: &str) -> Option<String> {
         if let Ok(value) = env::var(key) {
             return Some(value);
@@ -57,12 +123,24 @@ impl Handler for EnvHandler {
     }
 }
 
+/// A handler for retrieving values from a file.
+///
+/// This struct is responsible for handling requests by checking for values within a specified file.
+/// (The actual file reading logic is not yet implemented in the provided code.)
 pub struct FileHandler {
+    /// Path to the file from which values are to be retrieved.
     file_path: PathBuf,
+    /// An optional next handler to delegate requests if this handler can't fulfill them.
     next: Option<Box<dyn Handler>>,
 }
 
 impl FileHandler {
+    /// Creates a new `FileHandler` with the specified file path and an optional next handler.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the file from which values are to be retrieved.
+    /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
     pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
         FileHandler {
@@ -70,9 +148,24 @@ impl FileHandler {
             next,
         }
     }
+
+    #[allow(dead_code)]
+    pub fn as_box(file_path: &str, next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
+        Some(Box::new(FileHandler::new(file_path, next)))
+    }
 }
 
 impl Handler for FileHandler {
+    /// Retrieves content from the specified file.
+    ///
+    /// This implementation attempts to read content from the file specified by `file_path`.
+    /// If reading fails, and if a next handler is provided, it delegates the request
+    /// to the next handler. If there's no next handler or if the file reading fails,
+    /// it returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key for which the value needs to be retrieved. (Note: The `key` is currently unused in the reading logic.)
     fn handle_request(&self, key: &str) -> Option<String> {
         if let Ok(mut file) = File::open(&self.file_path) {
             let mut content = String::new();
@@ -87,11 +180,24 @@ impl Handler for FileHandler {
     }
 }
 
+/// A handler for retrieving values from a specified JSON file.
+///
+/// This struct is responsible for handling requests by reading content from the file
+/// specified in the underlying `FileHandler`, and then searching for a specific key
+/// within the parsed JSON structure. If the key is not found in the JSON structure,
+/// it delegates the request to the next handler (if provided).
 pub struct JSONFileHandler {
+    /// Underlying file handler used to read content from the specified file.
     file_handler: FileHandler,
 }
 
 impl JSONFileHandler {
+    /// Creates a new `JSONFileHandler` with the specified file path and an optional next handler.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the JSON file from which values are to be retrieved.
+    /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
     pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
         JSONFileHandler {
@@ -99,7 +205,23 @@ impl JSONFileHandler {
         }
     }
 
-    fn find_key_recursive(json_value: &Value, key: &str) -> Option<String> {
+    #[allow(dead_code)]
+    pub fn as_box(file_path: &str, next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
+        Some(Box::new(JSONFileHandler::new(file_path, next)))
+    }
+
+    /// Recursively searches for a key within the parsed JSON structure.
+    ///
+    /// # Arguments
+    ///
+    /// * `json_value` - The current JSON value being inspected.
+    /// * `key` - The key for which the value needs to be retrieved.
+    ///
+    /// # Returns
+    ///
+    /// If found, returns an `Option` wrapping a `String` value associated with the key.
+    /// Otherwise, returns `None`.
+    pub fn find_key_recursive(json_value: &Value, key: &str) -> Option<String> {
         match json_value {
             Value::Object(map) => {
                 if let Some(value) = map.get(key) {
@@ -130,6 +252,17 @@ impl JSONFileHandler {
 }
 
 impl Handler for JSONFileHandler {
+    /// Retrieves a value for the specified key from the JSON file.
+    ///
+    /// This implementation attempts to read content from the file specified in the underlying `FileHandler`,
+    /// parses the content as JSON, and then searches for the specified key within the parsed JSON structure.
+    /// If the key is not found in the JSON structure, and if a next handler is provided, it delegates the request
+    /// to the next handler. If there's no next handler, or if the key is not found in both the JSON structure
+    /// and the next handler, it returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key for which the value needs to be retrieved from the JSON file.
     fn handle_request(&self, key: &str) -> Option<String> {
         if let Some(file_data) = self.file_handler.handle_request(key) {
             if let Ok(parsed_json) = serde_json::from_str::<Value>(&file_data) {
@@ -146,20 +279,38 @@ impl Handler for JSONFileHandler {
     }
 }
 
+/// A default implementation of the `Handler` trait.
+///
+/// This struct contains a single `value` that will be returned for any request,
+/// regardless of the provided key.
 pub struct DefaultHandler {
     value: String,
 }
 
 impl DefaultHandler {
+    /// Creates a new `DefaultHandler` with the specified value.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The value to be returned for any request.
     #[allow(dead_code)]
     pub fn new(value: &str) -> Self {
         DefaultHandler {
             value: String::from(value),
         }
     }
+
+    #[allow(dead_code)]
+    pub fn as_box(value: &str) -> Option<Box<dyn Handler>> {
+        Some(Box::new(DefaultHandler::new(value)))
+    }
 }
 
 impl Handler for DefaultHandler {
+    /// Always returns the stored value, regardless of the key.
+    ///
+    /// This implementation ignores the provided key and always returns the
+    /// value stored in the `DefaultHandler`.
     fn handle_request(&self, _: &str) -> Option<String> {
         Some(self.value.clone())
     }
