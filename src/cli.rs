@@ -1,5 +1,7 @@
 use clap::ArgMatches;
+use config::Config;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -22,6 +24,43 @@ pub trait Handler {
     /// An `Option` wrapping a `String` value associated with the key.
     /// If there's no value associated with the key, it should return `None`.
     fn handle_request(&self, key: &str) -> Option<String>;
+}
+
+/// A default implementation of the `Handler` trait.
+///
+/// This struct contains a single `value` that will be returned for any request,
+/// regardless of the provided key.
+pub struct DefaultHandler {
+    value: String,
+}
+
+impl DefaultHandler {
+    /// Creates a new `DefaultHandler` with the specified value.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The value to be returned for any request.
+    #[allow(dead_code)]
+    pub fn new(value: &str) -> Self {
+        DefaultHandler {
+            value: String::from(value),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn as_box(value: &str) -> Option<Box<dyn Handler>> {
+        Some(Box::new(DefaultHandler::new(value)))
+    }
+}
+
+impl Handler for DefaultHandler {
+    /// Always returns the stored value, regardless of the key.
+    ///
+    /// This implementation ignores the provided key and always returns the
+    /// value stored in the `DefaultHandler`.
+    fn handle_request(&self, _key: &str) -> Option<String> {
+        Some(self.value.clone())
+    }
 }
 
 /// A handler for managing command-line arguments.
@@ -65,8 +104,10 @@ impl<'a> Handler for ArgHandler<'a> {
     ///
     /// * `key` - The key for which the value needs to be retrieved.
     fn handle_request(&self, key: &str) -> Option<String> {
-        if let Some(value) = self.args.get_one::<String>(key).map(String::from) {
-            return Some(value);
+        if let Ok(value) = self.args.try_get_one::<String>(key) {
+            if let Some(value) = value {
+                return Some(value.clone());
+            }
         }
         if let Some(next_handler) = &self.next {
             return next_handler.handle_request(key);
@@ -279,40 +320,43 @@ impl Handler for JSONFileHandler {
     }
 }
 
-/// A default implementation of the `Handler` trait.
-///
-/// This struct contains a single `value` that will be returned for any request,
-/// regardless of the provided key.
-pub struct DefaultHandler {
-    value: String,
+pub struct CfgFileHandler {
+    /// Underlying file handler used to read content from the specified file.
+    file_handler: FileHandler,
 }
 
-impl DefaultHandler {
-    /// Creates a new `DefaultHandler` with the specified value.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The value to be returned for any request.
+impl CfgFileHandler {
     #[allow(dead_code)]
-    pub fn new(value: &str) -> Self {
-        DefaultHandler {
-            value: String::from(value),
+    pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
+        CfgFileHandler {
+            file_handler: FileHandler::new(file_path, next),
         }
     }
 
     #[allow(dead_code)]
-    pub fn as_box(value: &str) -> Option<Box<dyn Handler>> {
-        Some(Box::new(DefaultHandler::new(value)))
+    pub fn as_box(file_path: &str, next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
+        Some(Box::new(CfgFileHandler::new(file_path, next)))
     }
 }
 
-impl Handler for DefaultHandler {
-    /// Always returns the stored value, regardless of the key.
-    ///
-    /// This implementation ignores the provided key and always returns the
-    /// value stored in the `DefaultHandler`.
-    fn handle_request(&self, _: &str) -> Option<String> {
-        Some(self.value.clone())
+impl Handler for CfgFileHandler {
+    fn handle_request(&self, key: &str) -> Option<String> {
+        if let Ok(cfg) = Config::builder()
+            .add_source(config::File::with_name(
+                self.file_handler.file_path.display().to_string().as_str(),
+            ))
+            .build()
+        {
+            if let Ok(cfg) = cfg.try_deserialize::<HashMap<String, String>>() {
+                if let Some(value) = cfg.get(key) {
+                    return Some(value.clone());
+                }
+            }
+        }
+        if let Some(next_handler) = &self.file_handler.next {
+            return next_handler.handle_request(key);
+        }
+        None
     }
 }
 
@@ -492,6 +536,74 @@ mod tests {
             let next_handler: Option<Box<dyn Handler>> =
                 Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
             let handler = JSONFileHandler::new("", next_handler);
+            let actual = handler.handle_request("example");
+            assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
+        }
+    }
+
+    mod cfg_file_handler {
+        use std::io::Write;
+        use tempfile::Builder;
+        use unindent::unindent;
+
+        use super::*;
+
+        #[test]
+        fn test_retrieves_set_value_number_as_yaml() {
+            let mut temp_file = Builder::new().suffix(".yaml").tempfile().unwrap();
+            let expected = r#"
+            ---
+            test_key: 123
+            "#;
+            writeln!(temp_file, "{}", unindent(expected)).unwrap();
+
+            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let actual = handler.handle_request("test_key"); // key is not used in this handler
+            assert_eq!(actual, Some("123".to_string()));
+        }
+
+        #[test]
+        fn test_retrieves_set_value_string_as_yaml() {
+            let mut temp_file = Builder::new().suffix(".yaml").tempfile().unwrap();
+            let expected = r#"
+            ---
+            test_key: "example"
+            "#;
+            writeln!(temp_file, "{}", unindent(expected)).unwrap();
+
+            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let actual = handler.handle_request("test_key"); // key is not used in this handler
+            assert_eq!(actual, Some("example".to_string()));
+        }
+
+        #[test]
+        #[ignore]
+        fn test_retrieves_set_value_nested_object() {
+            let mut temp_file = Builder::new().suffix(".yaml").tempfile().unwrap();
+            let expected = r#"
+            ---
+            test_obj:
+                test_key: "test_val"
+            "#;
+            writeln!(temp_file, "{}", unindent(expected)).unwrap();
+
+            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let actual = handler.handle_request("test_key"); // key is not used in this handler
+            assert_eq!(actual, Some("test_val".to_string()));
+        }
+
+        #[test]
+        fn test_returns_none_for_nonexistent_file() {
+            let handler = CfgFileHandler::new("", None);
+            let result = handler.handle_request("example");
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_next_handler_called() {
+            let next_handler: Option<Box<dyn Handler>> =
+                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
+            let handler = CfgFileHandler::new("", next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }

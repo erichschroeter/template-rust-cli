@@ -4,7 +4,6 @@ use clap::{Arg, ArgMatches};
 use log::{debug, error, info, trace, warn, LevelFilter};
 
 use crate::cli::{ArgHandler, DefaultHandler, EnvHandler, FileHandler, Handler};
-// use clap::{App, Arg, ArgMatches, SubCommand};
 
 /// Sets up logging based on the specified verbosity level.
 ///
@@ -115,13 +114,25 @@ fn fixme1(matches: &ArgMatches) {
             DefaultHandler::as_box("info"),
         )),
     );
-    // let env_handler = Box::new(EnvHandler::new(None));
-    // let file_handler = Box::new(FileHandler::new("~/.config/fixme/verbosity", None));
-    // let default_handler = Box::new(DefaultHandler::new("info"));
-
     if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
         println!("Verbosity: {}", verbosity);
     }
+    // let verbosity_handler = ArgHandler::new(matches, None);
+    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
+    //     println!("Verbosity (ArgHandler): {}", verbosity);
+    // }
+    // let verbosity_handler = Box::new(EnvHandler::new(None));
+    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
+    //     println!("Verbosity (EnvHandler): {}", verbosity);
+    // }
+    // let verbosity_handler = Box::new(FileHandler::new("~/.config/fixme/verbosity", None));
+    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
+    //     println!("Verbosity (FileHandler): {}", verbosity);
+    // }
+    // let verbosity_handler = Box::new(DefaultHandler::new("info"));
+    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
+    //     println!("Verbosity (DefaultHandler): {}", verbosity);
+    // }
 }
 
 fn fixme2(matches: &ArgMatches) {
