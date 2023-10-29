@@ -137,10 +137,12 @@ impl App {
         }
     }
 
-    pub fn run_with_args(&mut self, args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-        // let matches = self.args.clone().get_matches();
+    pub fn run_with_args<I, T>(&mut self, args: I) -> Result<(), Box<dyn std::error::Error>>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
         let matches = self.args.clone().get_matches_from(args);
-        // let matches = self.args.clone().try_get_matches()?;
 
         if let Some(verbosity) = matches.get_one::<String>("verbose") {
             setup_logging(verbosity);
@@ -155,7 +157,17 @@ impl App {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.run_with_args(std::env::args().collect())
+        self.run_with_args(std::env::args().into_iter())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_run_with_args() {
+        assert_eq!(Some(()), App::new().run_with_args(&vec!["fixme.exe", "fixme1", "0"]).ok());
     }
 }
 
