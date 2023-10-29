@@ -92,51 +92,73 @@ fn fixme2(matches: &ArgMatches) {
     println!("Running fixme2: {:?}", matches);
 }
 
-fn main() {
-    let matches = clap::Command::new("FIXME")
-        .version("v1.0.0")
-        .author("Your Name <your.email@example.com>")
-        .about("FIXME")
-        .arg(
-            Arg::new("verbose")
-                .short('v')
-                .long("verbose")
-                .value_name("VERBOSE")
-                // .default_value(Settings::default().verbose)
-                .help("Set the logging verbosity level.")
-                .long_help("Choices: [off, error, warn, info, debug, trace]"),
-        )
-        .infer_subcommands(true)
-        .arg_required_else_help(true)
-        .subcommand(
-            clap::Command::new("fixme1")
-                .about("Executes the fixme1 function")
-                .arg(
-                    Arg::new("input")
-                        .help("Input for the fixme1 function")
-                        .required(false)
-                        .index(1),
-                ),
-        )
-        .subcommand(
-            clap::Command::new("fixme2")
-                .about("Executes the fixme2 function")
-                .arg(
-                    Arg::new("input")
-                        .help("Input for the fixme2 function")
-                        .required(true)
-                        .index(1),
-                ),
-        )
-        .get_matches();
+struct App {
+    args: clap::Command,
+}
 
-    if let Some(verbosity) = matches.get_one::<String>("verbose") {
-        setup_logging(verbosity);
+impl App {
+    pub fn new() -> Self {
+        App {
+            args: clap::Command::new("FIXME")
+                .version("v1.0.0")
+                .author("Your Name <your.email@example.com>")
+                .about("FIXME")
+                .arg(
+                    Arg::new("verbose")
+                        .short('v')
+                        .long("verbose")
+                        .value_name("VERBOSE")
+                        // .default_value(Settings::default().verbose)
+                        .help("Set the logging verbosity level.")
+                        .long_help("Choices: [off, error, warn, info, debug, trace]"),
+                )
+                .infer_subcommands(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    clap::Command::new("fixme1")
+                        .about("Executes the fixme1 function")
+                        .arg(
+                            Arg::new("input")
+                                .help("Input for the fixme1 function")
+                                .required(false)
+                                .index(1),
+                        ),
+                )
+                .subcommand(
+                    clap::Command::new("fixme2")
+                        .about("Executes the fixme2 function")
+                        .arg(
+                            Arg::new("input")
+                                .help("Input for the fixme2 function")
+                                .required(true)
+                                .index(1),
+                        ),
+                ),
+        }
     }
 
-    match matches.subcommand() {
-        Some(("fixme1", sub_m)) => fixme1(sub_m),
-        Some(("fixme2", sub_m)) => fixme2(sub_m),
-        _ => eprintln!("Invalid subcommand!"),
+    pub fn run_with_args(&mut self, args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+        // let matches = self.args.clone().get_matches();
+        let matches = self.args.clone().get_matches_from(args);
+        // let matches = self.args.clone().try_get_matches()?;
+
+        if let Some(verbosity) = matches.get_one::<String>("verbose") {
+            setup_logging(verbosity);
+        }
+
+        match matches.subcommand() {
+            Some(("fixme1", sub_m)) => fixme1(sub_m),
+            Some(("fixme2", sub_m)) => fixme2(sub_m),
+            _ => eprintln!("Invalid subcommand!"),
+        }
+        Ok(())
     }
+
+    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.run_with_args(std::env::args().collect())
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    App::new().run()
 }
