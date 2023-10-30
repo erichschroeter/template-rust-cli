@@ -167,7 +167,12 @@ mod tests {
 
     #[test]
     fn test_run_with_args() {
-        assert_eq!(Some(()), App::new().run_with_args(&vec!["fixme.exe", "fixme1", "0"]).ok());
+        assert_eq!(
+            Some(()),
+            App::new()
+                .run_with_args(&vec!["fixme.exe", "fixme1", "0"])
+                .ok()
+        );
     }
 }
 

@@ -1,6 +1,7 @@
 use clap::ArgMatches;
 use config::Config;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -121,29 +122,40 @@ impl<'a> Handler for ArgHandler<'a> {
 /// This struct is responsible for handling requests by checking for the existence of
 /// an environment variable corresponding to the provided key. If the environment variable
 /// is not found, it delegates the request to the next handler (if provided).
-pub struct EnvHandler {
+pub struct EnvHandler<'a> {
+    /// A prefix to prepend to the key passed to `handle_request()`.
+    prefix: Option<Cow<'a, str>>,
     /// An optional next handler to delegate requests if this handler can't fulfill them.
     next: Option<Box<dyn Handler>>,
 }
 
-impl EnvHandler {
+impl<'a> EnvHandler<'a> {
     /// Creates a new `EnvHandler` with an optional next handler.
     ///
     /// # Arguments
     ///
+    /// * `prefix` - An optional prefix to which requests will prepend when `handle_request()` is executed.` If `None`, an empty string is assigned.
     /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
     pub fn new(next: Option<Box<dyn Handler>>) -> Self {
-        EnvHandler { next }
+        EnvHandler { prefix: None, next }
     }
 
     #[allow(dead_code)]
     pub fn as_box(next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
         Some(Box::new(EnvHandler::new(next)))
     }
+
+    pub fn prefix<S>(mut self, prefix: S) -> Self
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.prefix = Some(prefix.into());
+        self
+    }
 }
 
-impl Handler for EnvHandler {
+impl<'a> Handler for EnvHandler<'a> {
     /// Retrieves a value for the specified key from the environment variables.
     ///
     /// If the environment variable corresponding to the key is not found, and if a next handler is provided,
@@ -154,8 +166,15 @@ impl Handler for EnvHandler {
     ///
     /// * `key` - The key for which the value needs to be retrieved from environment variables.
     fn handle_request(&self, key: &str) -> Option<String> {
-        if let Ok(value) = env::var(key) {
-            return Some(value);
+        if let Some(prefix) = &self.prefix {
+            let key = format!("{prefix}{key}");
+            if let Ok(value) = env::var(key) {
+                return Some(value);
+            }
+        } else {
+            if let Ok(value) = env::var(key) {
+                return Some(value);
+            }
         }
         if let Some(next_handler) = &self.next {
             return next_handler.handle_request(key);
@@ -379,10 +398,18 @@ mod tests {
         use super::*;
 
         #[test]
-        fn test_retrieves_set_value() {
+        fn test_retrieves_set_value_without_prefix() {
             env::set_var("TEST_KEY", "test_value");
             let handler = EnvHandler::new(None);
             let actual = handler.handle_request("TEST_KEY");
+            assert_eq!(actual, Some("test_value".to_string()));
+        }
+
+        #[test]
+        fn test_retrieves_set_value_with_prefix() {
+            env::set_var("TEST_KEY", "test_value");
+            let handler = EnvHandler::new(None).prefix("TEST_");
+            let actual = handler.handle_request("KEY");
             assert_eq!(actual, Some("test_value".to_string()));
         }
 
