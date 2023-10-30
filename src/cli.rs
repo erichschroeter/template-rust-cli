@@ -25,6 +25,7 @@ pub trait Handler {
     /// An `Option` wrapping a `String` value associated with the key.
     /// If there's no value associated with the key, it should return `None`.
     fn handle_request(&self, key: &str) -> Option<String>;
+    // fn handle_request<T: AsRef<str>>(&self, key: T) -> Option<String>;
 }
 
 /// A default implementation of the `Handler` trait.
@@ -46,11 +47,6 @@ impl DefaultHandler {
         DefaultHandler {
             value: String::from(value),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn as_box(value: &str) -> Option<Box<dyn Handler>> {
-        Some(Box::new(DefaultHandler::new(value)))
     }
 }
 
@@ -84,13 +80,14 @@ impl<'a> ArgHandler<'a> {
     /// * `args` - The parsed command-line arguments.
     /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
-    pub fn new(args: &'a ArgMatches, next: Option<Box<dyn Handler>>) -> Self {
-        ArgHandler { args, next }
+    pub fn new(args: &'a ArgMatches) -> Self {
+        ArgHandler { args, next: None }
     }
 
     #[allow(dead_code)]
-    pub fn as_box(args: &'a ArgMatches, next: Option<Box<dyn Handler>>) -> Option<Box<Self>> {
-        Some(Box::new(ArgHandler::new(args, next)))
+    pub fn next(mut self, handler: Box<dyn Handler>) -> Self {
+        self.next = Some(handler);
+        self
     }
 }
 
@@ -137,15 +134,20 @@ impl<'a> EnvHandler<'a> {
     /// * `prefix` - An optional prefix to which requests will prepend when `handle_request()` is executed.` If `None`, an empty string is assigned.
     /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
-    pub fn new(next: Option<Box<dyn Handler>>) -> Self {
-        EnvHandler { prefix: None, next }
+    pub fn new() -> Self {
+        EnvHandler {
+            prefix: None,
+            next: None,
+        }
     }
 
     #[allow(dead_code)]
-    pub fn as_box(next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
-        Some(Box::new(EnvHandler::new(next)))
+    pub fn next(mut self, handler: Box<dyn Handler>) -> Self {
+        self.next = Some(handler);
+        self
     }
 
+    #[allow(dead_code)]
     pub fn prefix<S>(mut self, prefix: S) -> Self
     where
         S: Into<Cow<'a, str>>,
@@ -202,16 +204,17 @@ impl FileHandler {
     /// * `file_path` - The path to the file from which values are to be retrieved.
     /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
-    pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
+    pub fn new(file_path: &str) -> Self {
         FileHandler {
             file_path: Path::new(file_path).into(),
-            next,
+            next: None,
         }
     }
 
     #[allow(dead_code)]
-    pub fn as_box(file_path: &str, next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
-        Some(Box::new(FileHandler::new(file_path, next)))
+    pub fn next(mut self, handler: Box<dyn Handler>) -> Self {
+        self.next = Some(handler);
+        self
     }
 }
 
@@ -259,15 +262,16 @@ impl JSONFileHandler {
     /// * `file_path` - The path to the JSON file from which values are to be retrieved.
     /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
-    pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
+    pub fn new(file_path: &str) -> Self {
         JSONFileHandler {
-            file_handler: FileHandler::new(file_path, next),
+            file_handler: FileHandler::new(file_path),
         }
     }
 
     #[allow(dead_code)]
-    pub fn as_box(file_path: &str, next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
-        Some(Box::new(JSONFileHandler::new(file_path, next)))
+    pub fn next(mut self, handler: Box<dyn Handler>) -> Self {
+        self.file_handler.next = Some(handler);
+        self
     }
 
     /// Recursively searches for a key within the parsed JSON structure.
@@ -346,15 +350,16 @@ pub struct CfgFileHandler {
 
 impl CfgFileHandler {
     #[allow(dead_code)]
-    pub fn new(file_path: &str, next: Option<Box<dyn Handler>>) -> Self {
+    pub fn new(file_path: &str) -> Self {
         CfgFileHandler {
-            file_handler: FileHandler::new(file_path, next),
+            file_handler: FileHandler::new(file_path),
         }
     }
 
     #[allow(dead_code)]
-    pub fn as_box(file_path: &str, next: Option<Box<dyn Handler>>) -> Option<Box<dyn Handler>> {
-        Some(Box::new(CfgFileHandler::new(file_path, next)))
+    pub fn next(mut self, handler: Box<dyn Handler>) -> Self {
+        self.file_handler.next = Some(handler);
+        self
     }
 }
 
@@ -381,7 +386,35 @@ impl Handler for CfgFileHandler {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
     use super::*;
+
+    #[test]
+    fn test_all_chain_of_responsibility() {
+        env::set_var("TEST_KEY", "EnvHandler");
+        let args = clap::Command::new("test_app")
+            .arg(clap::Arg::new("example").long("example"))
+            .get_matches_from(vec!["test_app", "--example", "ArgHandler"]);
+        let temp_dir = tempfile::tempdir().unwrap();
+        // Don't create the temporary file so the chain keeps going to the end for this test.
+        let raw_file = temp_dir.path().join("should-not-exist.txt");
+        let mut json_file = NamedTempFile::new().unwrap();
+        writeln!(json_file, r#"{{"test_key": "JSONFileHandler"}}"#).unwrap();
+
+        let handler = ArgHandler::new(&args).next(Box::new(
+            EnvHandler::new().next(Box::new(
+                FileHandler::new(raw_file.as_path().to_str().unwrap())
+                    .next(Box::new(JSONFileHandler::new(
+                        json_file.path().to_str().unwrap(),
+                    )))
+                    .next(Box::new(DefaultHandler::new("DefaultHandler"))),
+            )),
+        ));
+        let actual = handler.handle_request("");
+        assert_eq!(actual, Some("DefaultHandler".to_string()));
+    }
 
     mod default_handler {
         use super::*;
@@ -400,7 +433,7 @@ mod tests {
         #[test]
         fn test_retrieves_set_value_without_prefix() {
             env::set_var("TEST_KEY", "test_value");
-            let handler = EnvHandler::new(None);
+            let handler = EnvHandler::new();
             let actual = handler.handle_request("TEST_KEY");
             assert_eq!(actual, Some("test_value".to_string()));
         }
@@ -408,7 +441,7 @@ mod tests {
         #[test]
         fn test_retrieves_set_value_with_prefix() {
             env::set_var("TEST_KEY", "test_value");
-            let handler = EnvHandler::new(None).prefix("TEST_");
+            let handler = EnvHandler::new().prefix("TEST_");
             let actual = handler.handle_request("KEY");
             assert_eq!(actual, Some("test_value".to_string()));
         }
@@ -416,7 +449,7 @@ mod tests {
         #[test]
         fn test_returns_none_for_unset_value() {
             env::remove_var("UNSET_KEY"); // Ensure the variable is not set
-            let handler = EnvHandler::new(None);
+            let handler = EnvHandler::new();
             let actual = handler.handle_request("UNSET_KEY");
             assert_eq!(actual, None);
         }
@@ -424,9 +457,8 @@ mod tests {
         #[test]
         fn test_next_handler_called() {
             env::remove_var("UNSET_KEY"); // Ensure the variable is not set
-            let next_handler: Option<Box<dyn Handler>> =
-                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
-            let handler = EnvHandler::new(next_handler);
+            let next_handler = Box::new(DefaultHandler::new("DEFAULT_VALUE"));
+            let handler = EnvHandler::new().next(next_handler);
             let actual = handler.handle_request("UNSET_KEY");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }
@@ -443,7 +475,7 @@ mod tests {
                 .arg(Arg::new("example").long("example"))
                 .get_matches_from(vec!["test_app", "--example", "test_value"]);
 
-            let handler = ArgHandler::new(&args, None);
+            let handler = ArgHandler::new(&args);
             let result = handler.handle_request("example");
             assert_eq!(result, Some("test_value".to_string()));
         }
@@ -454,7 +486,7 @@ mod tests {
                 .arg(Arg::new("example").long("example"))
                 .get_matches_from(vec!["test_app"]);
 
-            let handler = ArgHandler::new(&args, None);
+            let handler = ArgHandler::new(&args);
             let result = handler.handle_request("example");
             assert_eq!(result, None);
         }
@@ -464,9 +496,8 @@ mod tests {
             let args = clap::Command::new("test_app")
                 .arg(Arg::new("example").long("example"))
                 .get_matches_from(vec!["test_app"]);
-            let next_handler: Option<Box<dyn Handler>> =
-                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
-            let handler = ArgHandler::new(&args, next_handler);
+            let next_handler = Box::new(DefaultHandler::new("DEFAULT_VALUE"));
+            let handler = ArgHandler::new(&args).next(next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }
@@ -483,23 +514,22 @@ mod tests {
             let mut temp_file = NamedTempFile::new().unwrap();
             writeln!(temp_file, "test_content").unwrap();
 
-            let handler = FileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = FileHandler::new(temp_file.path().to_str().unwrap());
             let result = handler.handle_request(""); // key is not used in this handler
             assert_eq!(result, Some("test_content\n".to_string()));
         }
 
         #[test]
         fn test_returns_none_for_nonexistent_file() {
-            let handler = FileHandler::new("", None);
+            let handler = FileHandler::new("");
             let result = handler.handle_request("example");
             assert_eq!(result, None);
         }
 
         #[test]
         fn test_next_handler_called() {
-            let next_handler: Option<Box<dyn Handler>> =
-                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
-            let handler = FileHandler::new("", next_handler);
+            let next_handler = Box::new(DefaultHandler::new("DEFAULT_VALUE"));
+            let handler = FileHandler::new("").next(next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }
@@ -516,7 +546,7 @@ mod tests {
             let mut temp_file = NamedTempFile::new().unwrap();
             writeln!(temp_file, r#"{{"test_key": 123}}"#).unwrap();
 
-            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap());
             let actual = handler.handle_request("test_key"); // key is not used in this handler
             assert_eq!(actual, Some("123".to_string()));
         }
@@ -526,7 +556,7 @@ mod tests {
             let mut temp_file = NamedTempFile::new().unwrap();
             writeln!(temp_file, r#"{{"test_key": "example"}}"#).unwrap();
 
-            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap());
             let actual = handler.handle_request("test_key"); // key is not used in this handler
             assert_eq!(actual, Some("example".to_string()));
         }
@@ -536,7 +566,7 @@ mod tests {
             let mut temp_file = NamedTempFile::new().unwrap();
             writeln!(temp_file, r#"{{"test_obj": {{"test_key": "example"}} }}"#).unwrap();
 
-            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap());
             let actual = handler.handle_request("test_key"); // key is not used in this handler
             assert_eq!(actual, Some("example".to_string()));
         }
@@ -546,23 +576,22 @@ mod tests {
             let mut temp_file = NamedTempFile::new().unwrap();
             writeln!(temp_file, r#"[{{"test_key": "example"}}]"#).unwrap();
 
-            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = JSONFileHandler::new(temp_file.path().to_str().unwrap());
             let actual = handler.handle_request("test_key"); // key is not used in this handler
             assert_eq!(actual, Some("example".to_string()));
         }
 
         #[test]
         fn test_returns_none_for_nonexistent_file() {
-            let handler = JSONFileHandler::new("", None);
+            let handler = JSONFileHandler::new("");
             let result = handler.handle_request("example");
             assert_eq!(result, None);
         }
 
         #[test]
         fn test_next_handler_called() {
-            let next_handler: Option<Box<dyn Handler>> =
-                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
-            let handler = JSONFileHandler::new("", next_handler);
+            let next_handler = Box::new(DefaultHandler::new("DEFAULT_VALUE"));
+            let handler = JSONFileHandler::new("").next(next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }
@@ -584,7 +613,7 @@ mod tests {
             "#;
             writeln!(temp_file, "{}", unindent(expected)).unwrap();
 
-            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap());
             let actual = handler.handle_request("test_key"); // key is not used in this handler
             assert_eq!(actual, Some("123".to_string()));
         }
@@ -598,7 +627,7 @@ mod tests {
             "#;
             writeln!(temp_file, "{}", unindent(expected)).unwrap();
 
-            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap());
             let actual = handler.handle_request("test_key"); // key is not used in this handler
             assert_eq!(actual, Some("example".to_string()));
         }
@@ -614,23 +643,22 @@ mod tests {
             "#;
             writeln!(temp_file, "{}", unindent(expected)).unwrap();
 
-            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap(), None);
+            let handler = CfgFileHandler::new(temp_file.path().to_str().unwrap());
             let actual = handler.handle_request("test_key"); // key is not used in this handler
             assert_eq!(actual, Some("test_val".to_string()));
         }
 
         #[test]
         fn test_returns_none_for_nonexistent_file() {
-            let handler = CfgFileHandler::new("", None);
+            let handler = CfgFileHandler::new("");
             let result = handler.handle_request("example");
             assert_eq!(result, None);
         }
 
         #[test]
         fn test_next_handler_called() {
-            let next_handler: Option<Box<dyn Handler>> =
-                Some(Box::new(DefaultHandler::new("DEFAULT_VALUE")));
-            let handler = CfgFileHandler::new("", next_handler);
+            let next_handler = Box::new(DefaultHandler::new("DEFAULT_VALUE"));
+            let handler = CfgFileHandler::new("").next(next_handler);
             let actual = handler.handle_request("example");
             assert_eq!(actual, Some("DEFAULT_VALUE".to_string()));
         }

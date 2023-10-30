@@ -53,42 +53,20 @@ fn setup_logging(verbose: &str) {
 }
 
 fn fixme1(matches: &ArgMatches) {
-    // let input = matches.get_one("input").unwrap();
-    // println!("Running fixme1 with input: {}", input);
     println!("Running fixme1: {:?}", matches);
-    // let mut handler = HandlerBox::new();
 
-    let verbosity_handler = ArgHandler::new(
-        matches,
-        EnvHandler::as_box(FileHandler::as_box(
-            "~/.config/fixme/verbosity",
-            DefaultHandler::as_box("info"),
+    let verbosity_handler = ArgHandler::new(matches).next(Box::new(
+        EnvHandler::new().prefix("FIXME_").next(Box::new(
+            FileHandler::new("~/.config/fixme/verbosity")
+                .next(Box::new(DefaultHandler::new("info"))),
         )),
-    );
-    if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
+    ));
+    if let Some(verbosity) = verbosity_handler.handle_request("verbosity") {
         println!("Verbosity: {}", verbosity);
     }
-    // let verbosity_handler = ArgHandler::new(matches, None);
-    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
-    //     println!("Verbosity (ArgHandler): {}", verbosity);
-    // }
-    // let verbosity_handler = Box::new(EnvHandler::new(None));
-    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
-    //     println!("Verbosity (EnvHandler): {}", verbosity);
-    // }
-    // let verbosity_handler = Box::new(FileHandler::new("~/.config/fixme/verbosity", None));
-    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
-    //     println!("Verbosity (FileHandler): {}", verbosity);
-    // }
-    // let verbosity_handler = Box::new(DefaultHandler::new("info"));
-    // if let Some(verbosity) = verbosity_handler.handle_request("FIXME_VERBOSITY") {
-    //     println!("Verbosity (DefaultHandler): {}", verbosity);
-    // }
 }
 
 fn fixme2(matches: &ArgMatches) {
-    // let input = matches.value_of("input").unwrap();
-    // println!("Running fixme2 with input: {}", input);
     println!("Running fixme2: {:?}", matches);
 }
 
