@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
 use std::path::PathBuf;
 
 /// A trait for handling requests based on a key.
@@ -204,9 +203,12 @@ impl FileHandler {
     /// * `file_path` - The path to the file from which values are to be retrieved.
     /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
-    pub fn new(file_path: &str) -> Self {
+    pub fn new<P>(file_path: P) -> Self
+    where
+        P: Into<PathBuf>
+    {
         FileHandler {
-            file_path: Path::new(file_path).into(),
+            file_path: file_path.into(),
             next: None,
         }
     }
@@ -262,7 +264,10 @@ impl JSONFileHandler {
     /// * `file_path` - The path to the JSON file from which values are to be retrieved.
     /// * `next` - An optional next handler to which requests can be delegated if this handler can't fulfill them.
     #[allow(dead_code)]
-    pub fn new(file_path: &str) -> Self {
+    pub fn new<P>(file_path: P) -> Self
+    where
+        P: Into<PathBuf>
+    {
         JSONFileHandler {
             file_handler: FileHandler::new(file_path),
         }
@@ -350,7 +355,10 @@ pub struct CfgFileHandler {
 
 impl CfgFileHandler {
     #[allow(dead_code)]
-    pub fn new(file_path: &str) -> Self {
+    pub fn new<P>(file_path: P) -> Self
+    where
+        P: Into<PathBuf>
+    {
         CfgFileHandler {
             file_handler: FileHandler::new(file_path),
         }
