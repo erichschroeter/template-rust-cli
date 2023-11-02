@@ -20,7 +20,7 @@ use crate::cli::{ArgHandler, DefaultHandler, EnvHandler, FileHandler, Handler};
 ///
 /// # Arguments
 ///
-/// * `verbose` - A string slice representing the desired verbosity level.
+/// * `verbosity` - A string slice representing the desired verbosity level.
 ///   Valid values are "off", "error", "warn", "info", "debug", and "trace".
 ///   If an invalid value is provided, the default level will be set to "info".
 ///
@@ -33,16 +33,16 @@ use crate::cli::{ArgHandler, DefaultHandler, EnvHandler, FileHandler, Handler};
 ///
 /// # Panics
 ///
-/// This function will panic if the `verbose` string cannot be parsed into a `LevelFilter`.
+/// This function will panic if the `verbosity` string cannot be parsed into a `LevelFilter`.
 ///
 /// # Notes
 ///
 /// It is recommended to call this function early in the program to set up logging
 /// before any log messages are generated.
 ///
-fn setup_logging(verbose: &str) {
+fn setup_logging(verbosity: &str) {
     env_logger::builder()
-        .filter(None, verbose.parse().unwrap_or(LevelFilter::Info))
+        .filter(None, verbosity.parse().unwrap_or(LevelFilter::Info))
         .init();
 
     error!("log level enabled: error");
