@@ -55,12 +55,16 @@ fn setup_logging(verbose: &str) {
 fn fixme1(matches: &ArgMatches) {
     println!("Running fixme1: {:?}", matches);
 
-    let verbosity_handler = ArgHandler::new(matches).next(Box::new(
-        EnvHandler::new().prefix("FIXME_").next(Box::new(
-            FileHandler::new("~/.config/fixme/verbosity")
-                .next(Box::new(DefaultHandler::new("info"))),
-        )),
-    ));
+    let verbosity_handler = ArgHandler::new(matches).next(
+        EnvHandler::new()
+            .prefix("FIXME_")
+            .next(
+                FileHandler::new("~/.config/fixme/verbosity")
+                    .next(DefaultHandler::new("info").into())
+                    .into(),
+            )
+            .into(),
+    );
     if let Some(verbosity) = verbosity_handler.handle_request("verbosity") {
         println!("Verbosity: {}", verbosity);
     }

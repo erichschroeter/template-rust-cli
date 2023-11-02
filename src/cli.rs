@@ -59,6 +59,12 @@ impl Handler for DefaultHandler {
     }
 }
 
+impl Into<Box<dyn Handler>> for DefaultHandler {
+    fn into(self) -> Box<dyn Handler> {
+        Box::new(self)
+    }
+}
+
 /// A handler for managing command-line arguments.
 ///
 /// This struct is responsible for handling command-line arguments passed to the application.
@@ -110,6 +116,12 @@ impl<'a> Handler for ArgHandler<'a> {
             return next_handler.handle_request(key);
         }
         None
+    }
+}
+
+impl<'a> Into<Box<dyn Handler + 'a>> for ArgHandler<'a> {
+    fn into(self) -> Box<dyn Handler + 'a> {
+        Box::new(self)
     }
 }
 
@@ -184,6 +196,12 @@ impl<'a> Handler for EnvHandler<'a> {
     }
 }
 
+impl<'a> Into<Box<dyn Handler + 'a>> for EnvHandler<'a> {
+    fn into(self) -> Box<dyn Handler + 'a> {
+        Box::new(self)
+    }
+}
+
 /// A handler for retrieving values from a file.
 ///
 /// This struct is responsible for handling requests by checking for values within a specified file.
@@ -205,7 +223,7 @@ impl FileHandler {
     #[allow(dead_code)]
     pub fn new<P>(file_path: P) -> Self
     where
-        P: Into<PathBuf>
+        P: Into<PathBuf>,
     {
         FileHandler {
             file_path: file_path.into(),
@@ -245,6 +263,12 @@ impl Handler for FileHandler {
     }
 }
 
+impl Into<Box<dyn Handler>> for FileHandler {
+    fn into(self) -> Box<dyn Handler> {
+        Box::new(self)
+    }
+}
+
 /// A handler for retrieving values from a specified JSON file.
 ///
 /// This struct is responsible for handling requests by reading content from the file
@@ -266,7 +290,7 @@ impl JSONFileHandler {
     #[allow(dead_code)]
     pub fn new<P>(file_path: P) -> Self
     where
-        P: Into<PathBuf>
+        P: Into<PathBuf>,
     {
         JSONFileHandler {
             file_handler: FileHandler::new(file_path),
@@ -348,6 +372,12 @@ impl Handler for JSONFileHandler {
     }
 }
 
+impl Into<Box<dyn Handler>> for JSONFileHandler {
+    fn into(self) -> Box<dyn Handler> {
+        Box::new(self)
+    }
+}
+
 pub struct CfgFileHandler {
     /// Underlying file handler used to read content from the specified file.
     file_handler: FileHandler,
@@ -357,7 +387,7 @@ impl CfgFileHandler {
     #[allow(dead_code)]
     pub fn new<P>(file_path: P) -> Self
     where
-        P: Into<PathBuf>
+        P: Into<PathBuf>,
     {
         CfgFileHandler {
             file_handler: FileHandler::new(file_path),
@@ -389,6 +419,12 @@ impl Handler for CfgFileHandler {
             return next_handler.handle_request(key);
         }
         None
+    }
+}
+
+impl Into<Box<dyn Handler>> for CfgFileHandler {
+    fn into(self) -> Box<dyn Handler> {
+        Box::new(self)
     }
 }
 
