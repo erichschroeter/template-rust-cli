@@ -1,9 +1,8 @@
-mod cli;
 
 use clap::{Arg, ArgMatches};
 use log::{debug, error, info, trace, warn, LevelFilter};
 
-use crate::cli::{ArgHandler, DefaultHandler, EnvHandler, FileHandler, Handler};
+use cor_args::{ArgHandler, DefaultHandler, EnvHandler, FileHandler, Handler};
 
 /// Sets up logging based on the specified verbosity level.
 ///

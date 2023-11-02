@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.7", features = ["string", "env"] }
 config = "0.13.3"
+cor-args = "0.1.0"
 env_logger = "0.10.0"
 log = "0.4.20"
 serde_json = "1.0.107"
